@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-format \
+            clang-tidy \
+            iwyu \
+            lcov \
+            meson \
+            valgrind \
+            #
+
+      - name: Configure
+        run: meson setup builddir
+
+      - name: Build
+        run: meson compile -C builddir
+
+      - name: Run tests
+        run: meson test -C builddir unit-tests --print-errorlogs
+
+      - name: Run clang-tidy
+        run: meson test -C builddir clang-tidy --print-errorlogs
+
+      - name: Run IWYU
+        run: meson test -C builddir iwyu --print-errorlogs
+
+      - name: Check formatting
+        run: meson compile -C builddir format
+
+      - name: Run Valgrind
+        run: meson test -C builddir valgrind
+
+      - name: Run memory sanitizer
+        run: meson test -C builddir memsan
+
+      - name: Run coverage tests
+        run: meson test -C builddir coverage
+
+      - name: Generate coverage report
+        run: meson compile -C builddir coverage_report
+
+      - name: Prepare GitHub Pages site
+        run: |
+          cp -a builddir/coverage_report _site/coverage_report
+          cp -a builddir/docs/html _site/doxygen
+
+      - name: Upload _site to GitHub
+        uses: actions/upload-pages-artifact@v3
+        with:
+          name: github-pages
+          path: _site
+
+  deploy:
+    needs: build
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
